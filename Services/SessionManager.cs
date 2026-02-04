@@ -135,6 +135,15 @@ public class SessionManager
         SavePromotedStore();
     }
 
+    public void DemoteSession(string sessionId)
+    {
+        if (_promotedStore.Sessions.ContainsKey(sessionId))
+        {
+            _promotedStore.Sessions.Remove(sessionId);
+            SavePromotedStore();
+        }
+    }
+
     public List<SessionSearchResult> SearchSessions(string query)
     {
         var allSessions = LoadAllSessions();

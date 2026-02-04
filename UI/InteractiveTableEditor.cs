@@ -36,6 +36,16 @@ public class InteractiveTableEditor
 
         while (true)
         {
+            // Check if we still have sessions (in case they were all demoted)
+            if (!state.Sessions.Any())
+            {
+                Console.Clear();
+                AnsiConsole.MarkupLine("[yellow]No more promoted sessions[/]");
+                Thread.Sleep(1000);
+                Console.Clear();
+                return;
+            }
+
             RenderTable(state);
 
             var key = Console.ReadKey(true);
@@ -79,6 +89,12 @@ public class InteractiveTableEditor
                 case ConsoleKey.I when !state.IsEditing:
                     HandleShowDetails(state);
                     break;
+                case ConsoleKey.R when !state.IsEditing:
+                    HandleResumeSession(state);
+                    break;
+                case ConsoleKey.X when !state.IsEditing:
+                    HandleDemoteSession(state);
+                    break;
             }
         }
     }
@@ -89,7 +105,7 @@ public class InteractiveTableEditor
 
         // Header
         var header = new Panel(new Markup("[bold yellow]Manage Promoted Sessions[/]\n" +
-                                         "[dim]Arrow keys: navigate | Enter/E: edit | I: details | D: description | N: note | Esc: exit[/]"))
+                                         "[dim]Enter/E: edit | I: details | R: resume | D: description | N: note | X: demote | Esc: exit[/]"))
         {
             Border = BoxBorder.Rounded,
             Padding = new Padding(1, 0)
@@ -334,6 +350,83 @@ public class InteractiveTableEditor
         AnsiConsole.WriteLine();
         AnsiConsole.Markup("[dim]Press any key to return to table...[/]");
         Console.ReadKey(true);
+    }
+
+    private void HandleResumeSession(TableState state)
+    {
+        var session = state.Sessions[state.SelectedRow];
+
+        Console.Clear();
+        AnsiConsole.MarkupLine($"[green]Resuming session:[/] {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"[dim]Project: {session.ProjectPath.EscapeMarkup()}[/]");
+        AnsiConsole.WriteLine();
+
+        var isITerm2 = Environment.GetEnvironmentVariable("TERM_PROGRAM") == "iTerm.app";
+
+        if (isITerm2)
+        {
+            // Use AppleScript to open a new iTerm2 tab
+            var tabName = (session.Promoted?.Name ?? session.Summary).Replace("'", "\\'");
+            var appleScript = $@"
+tell application ""iTerm2""
+    tell current window
+        create tab with default profile
+        tell current session
+            set name to ""{tabName}""
+            write text ""cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions""
+        end tell
+    end tell
+end tell";
+
+            var processInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "osascript",
+                Arguments = $"-e \"{appleScript.Replace("\"", "\\\"")}\"",
+                UseShellExecute = false,
+                RedirectStandardError = true
+            };
+
+            try
+            {
+                var process = System.Diagnostics.Process.Start(processInfo);
+                process?.WaitForExit();
+
+                AnsiConsole.MarkupLine("[green]✓ Session opened in new tab[/]");
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Error: {ex.Message.EscapeMarkup()}[/]");
+            }
+        }
+        else
+        {
+            AnsiConsole.MarkupLine("[yellow]iTerm2 not detected. Session resume requires iTerm2.[/]");
+        }
+
+        Thread.Sleep(1000);
+    }
+
+    private void HandleDemoteSession(TableState state)
+    {
+        var session = state.Sessions[state.SelectedRow];
+
+        Console.Clear();
+        var confirm = AnsiConsole.Confirm($"Remove [yellow]{(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}[/] from promoted sessions?");
+
+        if (confirm)
+        {
+            _manager.DemoteSession(session.SessionId);
+            state.Sessions.RemoveAt(state.SelectedRow);
+
+            // Adjust selected row if needed
+            if (state.SelectedRow >= state.Sessions.Count && state.Sessions.Count > 0)
+            {
+                state.SelectedRow = state.Sessions.Count - 1;
+            }
+
+            AnsiConsole.MarkupLine("[green]✓ Session demoted[/]");
+            Thread.Sleep(1000);
+        }
     }
 
     private List<ColumnDefinition> BuildColumnDefinitions()
