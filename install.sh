@@ -1,32 +1,14 @@
 #!/bin/bash
+mkdir -p ~/.local/bin
 
-# Build the project
-dotnet build -c Release
-
-# Create a wrapper script
-cat > csm << 'EOF'
+cat > ~/.local/bin/csm << 'WRAPPER'
 #!/bin/bash
-dotnet "$HOME/.claude/tools/session-manager/bin/Release/net8.0/ClaudeSessionManager.dll"
-EOF
+exec dotnet ~/.local/lib/csm/ClaudeSessionManager.dll "$@"
+WRAPPER
 
-chmod +x csm
+chmod +x ~/.local/bin/csm
 
-# Move to a location in PATH
-if [ -d "$HOME/.local/bin" ]; then
-    mv csm "$HOME/.local/bin/"
-    echo "✓ Installed to ~/.local/bin/csm"
-elif [ -d "$HOME/bin" ]; then
-    mv csm "$HOME/bin/"
-    echo "✓ Installed to ~/bin/csm"
-else
-    echo "Creating ~/bin directory..."
-    mkdir -p "$HOME/bin"
-    mv csm "$HOME/bin/"
-    echo "✓ Installed to ~/bin/csm"
-    echo ""
-    echo "Note: Add ~/bin to your PATH if it's not already there:"
-    echo '  export PATH="$HOME/bin:$PATH"'
-fi
-
+echo "✓ Installed to ~/.local/bin/csm"
 echo ""
-echo "Installation complete! Run 'csm' to start the Claude Session Manager"
+echo "Make sure ~/.local/bin is in your PATH"
+echo "Run 'csm' to start the Claude Session Manager"

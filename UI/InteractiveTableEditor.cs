@@ -65,7 +65,10 @@ public class InteractiveTableEditor
                     if (state.IsEditing)
                         state.IsEditing = false;
                     else
+                    {
+                        Console.Clear();
                         return; // Exit table
+                    }
                     break;
                 case ConsoleKey.D when !state.IsEditing:
                     HandleEditDescription(state);

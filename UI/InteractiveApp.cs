@@ -153,16 +153,16 @@ public class InteractiveApp
             var preview = result.MatchPreview.EscapeMarkup();
             if (preview.Length > 80) preview = preview.Substring(0, 77) + "...";
 
-            return new
+            return new SearchResultChoice
             {
                 Result = result,
                 Display = $"{matchRatio} {statusBadge} {name} [dim]({projectName}, {timeAgo})[/]\n    [dim]{preview}[/]"
             };
         }).ToList();
 
-        choices.Add(new
+        choices.Add(new SearchResultChoice
         {
-            Result = (SessionManager.SessionSearchResult?)null,
+            Result = null,
             Display = "[dim]← Back[/]"
         });
 
@@ -197,10 +197,10 @@ public class InteractiveApp
             var timeAgo = GetTimeAgo(s.Modified);
             var statusBadge = s.Promoted != null ? $"[{GetStatusColor(s.Promoted.Status)}]●[/]" : " ";
 
-            return new { Session = s, Display = $"{statusBadge} {name} [dim]({projectName}, {timeAgo})[/]" };
+            return new SessionChoice { Session = s, Display = $"{statusBadge} {name} [dim]({projectName}, {timeAgo})[/]" };
         }).ToList();
 
-        choices.Add(new { Session = (ClaudeSession?)null, Display = "[dim]← Back[/]" });
+        choices.Add(new SessionChoice { Session = null, Display = "[dim]← Back[/]" });
 
         var selection = AnsiConsole.Prompt(
             new SelectionPrompt<string>()
@@ -655,5 +655,18 @@ end tell";
         Thread.Sleep(3000);
 
         _tmuxManager.AttachToSession(sessionName);
+    }
+
+    // Helper classes for SelectionPrompt (Native AOT compatible)
+    private class SearchResultChoice
+    {
+        public SessionManager.SessionSearchResult? Result { get; set; }
+        public string Display { get; set; } = string.Empty;
+    }
+
+    private class SessionChoice
+    {
+        public ClaudeSession? Session { get; set; }
+        public string Display { get; set; } = string.Empty;
     }
 }
