@@ -47,6 +47,7 @@ public class InteractiveApp
             {
                 "Browse all sessions",
                 "Browse promoted sessions",
+                "Manage promoted sessions (table view)",
                 "Search sessions",
                 "Exit"
             });
@@ -72,6 +73,9 @@ public class InteractiveApp
                     break;
                 case "Browse promoted sessions":
                     BrowseSessions(true);
+                    break;
+                case "Manage promoted sessions (table view)":
+                    ManagePromotedSessionsTable();
                     break;
                 case "Search sessions":
                     SearchSessions();
@@ -530,6 +534,32 @@ end tell";
             AnsiConsole.MarkupLine("[green]✓ Session archived[/]");
             Thread.Sleep(1000);
         }
+    }
+
+    private void ManagePromotedSessionsTable()
+    {
+        List<ClaudeSession> promotedSessions = new();
+
+        AnsiConsole.Status()
+            .Start("Loading promoted sessions...", ctx =>
+            {
+                promotedSessions = _manager.GetPromotedSessions()
+                    .OrderByDescending(s => s.Modified)
+                    .ToList();
+            });
+
+        if (!promotedSessions.Any())
+        {
+            AnsiConsole.MarkupLine("[yellow]No promoted sessions found[/]");
+            AnsiConsole.MarkupLine("[dim]Promote sessions first using 'Browse all sessions'[/]");
+            AnsiConsole.WriteLine();
+            AnsiConsole.Markup("[dim]Press any key to continue...[/]");
+            Console.ReadKey(true);
+            return;
+        }
+
+        var tableEditor = new InteractiveTableEditor(_manager);
+        tableEditor.EditSessions(promotedSessions);
     }
 
     private static string GetTimeAgo(DateTime dateTime)
