@@ -46,8 +46,7 @@ public class InteractiveApp
             choices.AddRange(new[]
             {
                 "Browse all sessions",
-                "Browse promoted sessions",
-                "Manage promoted sessions (table view)",
+                "Manage promoted sessions",
                 "Search sessions",
                 "Exit"
             });
@@ -71,10 +70,7 @@ public class InteractiveApp
                 case "Browse all sessions":
                     BrowseSessions(false);
                     break;
-                case "Browse promoted sessions":
-                    BrowseSessions(true);
-                    break;
-                case "Manage promoted sessions (table view)":
+                case "Manage promoted sessions":
                     ManagePromotedSessionsTable();
                     break;
                 case "Search sessions":

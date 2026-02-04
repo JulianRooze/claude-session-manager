@@ -76,6 +76,9 @@ public class InteractiveTableEditor
                 case ConsoleKey.N when !state.IsEditing:
                     HandleAddNote(state);
                     break;
+                case ConsoleKey.I when !state.IsEditing:
+                    HandleShowDetails(state);
+                    break;
             }
         }
     }
@@ -86,7 +89,7 @@ public class InteractiveTableEditor
 
         // Header
         var header = new Panel(new Markup("[bold yellow]Manage Promoted Sessions[/]\n" +
-                                         "[dim]Use arrow keys to navigate, Enter/E to edit, D for description, N for note, Escape to exit[/]"))
+                                         "[dim]Arrow keys: navigate | Enter/E: edit | I: details | D: description | N: note | Esc: exit[/]"))
         {
             Border = BoxBorder.Rounded,
             Padding = new Padding(1, 0)
@@ -266,6 +269,70 @@ public class InteractiveTableEditor
         }
 
         AnsiConsole.Markup("[dim]Press any key to continue...[/]");
+        Console.ReadKey(true);
+    }
+
+    private void HandleShowDetails(TableState state)
+    {
+        var session = state.Sessions[state.SelectedRow];
+
+        Console.Clear();
+
+        var grid = new Grid();
+        grid.AddColumn();
+        grid.AddColumn();
+
+        grid.AddRow("[blue bold]Session ID:[/]", session.SessionId);
+        grid.AddRow("[blue]Project:[/]", session.ProjectPath.EscapeMarkup());
+        grid.AddRow("[blue]Git Branch:[/]", session.GitBranch.EscapeMarkup());
+        grid.AddRow("[blue]Created:[/]", session.Created.ToString("yyyy-MM-dd HH:mm"));
+        grid.AddRow("[blue]Modified:[/]", session.Modified.ToString("yyyy-MM-dd HH:mm"));
+        grid.AddRow("[blue]Messages:[/]", session.MessageCount.ToString());
+
+        if (session.Promoted != null)
+        {
+            grid.AddEmptyRow();
+            grid.AddRow("[green bold]PROMOTED[/]", "");
+            if (!string.IsNullOrEmpty(session.Promoted.Name))
+                grid.AddRow("[blue]Name:[/]", session.Promoted.Name.EscapeMarkup());
+            if (!string.IsNullOrEmpty(session.Promoted.Description))
+                grid.AddRow("[blue]Description:[/]", session.Promoted.Description.EscapeMarkup());
+            if (session.Promoted.Tags.Any())
+                grid.AddRow("[blue]Tags:[/]", string.Join(", ", session.Promoted.Tags.Select(t => t.EscapeMarkup())));
+            grid.AddRow("[blue]Status:[/]", GetStatusDisplay(session.Promoted.Status));
+
+            if (session.Promoted.Notes.Any())
+            {
+                grid.AddEmptyRow();
+                grid.AddRow("[blue bold]Notes:[/]", "");
+                foreach (var note in session.Promoted.Notes.OrderByDescending(n => n.CreatedAt).Take(5))
+                {
+                    var noteText = note.Text.Length > 60 ? note.Text.Substring(0, 57) + "..." : note.Text;
+                    grid.AddRow($"[dim]{note.CreatedAt:MM/dd HH:mm}[/]", noteText.EscapeMarkup());
+                }
+            }
+        }
+
+        var panelTitle = (session.Promoted?.Name ?? session.Summary).EscapeMarkup();
+        var panel = new Panel(grid)
+        {
+            Header = new PanelHeader($"[yellow]{panelTitle}[/]"),
+            Border = BoxBorder.Rounded,
+            Padding = new Padding(2, 1)
+        };
+
+        AnsiConsole.Write(panel);
+
+        if (!string.IsNullOrEmpty(session.FirstPrompt) && session.FirstPrompt != "No prompt")
+        {
+            AnsiConsole.WriteLine();
+            AnsiConsole.MarkupLine("[dim]First Prompt:[/]");
+            var prompt = session.FirstPrompt.Length > 200 ? session.FirstPrompt.Substring(0, 197) + "..." : session.FirstPrompt;
+            AnsiConsole.MarkupLine($"[dim]{prompt.EscapeMarkup()}[/]");
+        }
+
+        AnsiConsole.WriteLine();
+        AnsiConsole.Markup("[dim]Press any key to return to table...[/]");
         Console.ReadKey(true);
     }
 
