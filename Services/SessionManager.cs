@@ -40,6 +40,56 @@ public class SessionManager
         File.WriteAllText(_promotedStoreFile, json);
     }
 
+    /// <summary>
+    /// Decodes a Claude project directory name back to a filesystem path.
+    /// e.g. "-Users-julian-code-my-project" → "/Users/julian/code/my-project"
+    /// Uses greedy matching: walks segments left to right, checking which paths exist on disk.
+    /// </summary>
+    private string DecodeProjectDirName(string encodedName)
+    {
+        if (string.IsNullOrEmpty(encodedName) || !encodedName.StartsWith("-"))
+            return encodedName;
+
+        // Split by '-' and skip the leading empty segment from the initial '-'
+        var segments = encodedName.Substring(1).Split('-');
+
+        var currentPath = "";
+        var i = 0;
+
+        while (i < segments.Length)
+        {
+            // Try progressively longer segment combinations to handle hyphens in directory names
+            var found = false;
+            for (int end = i; end < segments.Length; end++)
+            {
+                var candidate = string.Join("-", segments[i..(end + 1)]);
+                var testPath = currentPath + "/" + candidate;
+
+                if (Directory.Exists(testPath) || end == segments.Length - 1)
+                {
+                    // If directory exists, or this is the last possible segment, use it
+                    if (Directory.Exists(testPath))
+                    {
+                        currentPath = testPath;
+                        i = end + 1;
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found)
+            {
+                // Fallback: treat remaining segments as one path component
+                var remaining = string.Join("-", segments[i..]);
+                currentPath += "/" + remaining;
+                break;
+            }
+        }
+
+        return currentPath;
+    }
+
     public List<ClaudeSession> LoadAllSessions()
     {
         var allSessions = new List<ClaudeSession>();
@@ -58,6 +108,10 @@ public class SessionManager
                 continue;
             }
 
+            // Decode the directory name to get the actual project path
+            var dirName = Path.GetFileName(projectDir);
+            var decodedPath = DecodeProjectDirName(dirName);
+
             try
             {
                 var json = File.ReadAllText(indexFile);
@@ -66,6 +120,13 @@ public class SessionManager
                 {
                     foreach (var session in index.Entries)
                     {
+                        // Override ProjectPath with the decoded directory path
+                        // The JSON projectPath can be wrong (reflects last working dir, not start dir)
+                        if (!string.IsNullOrEmpty(decodedPath))
+                        {
+                            session.ProjectPath = decodedPath;
+                        }
+
                         // Attach promoted metadata if exists
                         if (_promotedStore.Sessions.TryGetValue(session.SessionId, out var promoted))
                         {
