@@ -32,7 +32,7 @@ public class ResumeCommand : Command<ResumeCommand.Settings>
             return 1;
         }
 
-        AnsiConsole.MarkupLine($"[green]Resuming session:[/] {session.Promoted?.Name ?? session.Summary}");
+        AnsiConsole.MarkupLine($"[green]Resuming session:[/] {SessionManager.GetDisplayName(session)}");
         AnsiConsole.MarkupLine($"[dim]Project: {session.ProjectPath}[/]");
         AnsiConsole.MarkupLine($"[dim]Session ID: {session.SessionId}[/]");
         AnsiConsole.WriteLine();

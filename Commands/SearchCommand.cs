@@ -31,7 +31,7 @@ public class SearchCommand : Command<SearchCommand.Settings>
         {
             var session = result.Session;
             var panel = new Panel(new Markup(
-                $"[bold]{session.Promoted?.Name ?? session.Summary}[/]\n" +
+                $"[bold]{SessionManager.GetDisplayName(session)}[/]\n" +
                 $"[dim]{session.FirstPrompt.Substring(0, Math.Min(100, session.FirstPrompt.Length))}...[/]\n\n" +
                 $"[blue]Project:[/] {session.ProjectPath}\n" +
                 $"[blue]Branch:[/] {session.GitBranch}\n" +

@@ -245,7 +245,7 @@ public class InteractiveTableEditor
         var session = state.Sessions[state.SelectedRow];
 
         Console.Clear();
-        AnsiConsole.MarkupLine($"[bold]Edit Description for:[/] {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"[bold]Edit Description for:[/] {(SessionManager.GetDisplayName(session)).EscapeMarkup()}");
         AnsiConsole.WriteLine();
 
         var description = AnsiConsole.Ask(
@@ -273,7 +273,7 @@ public class InteractiveTableEditor
         var session = state.Sessions[state.SelectedRow];
 
         Console.Clear();
-        AnsiConsole.MarkupLine($"[bold]Add Note to:[/] {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"[bold]Add Note to:[/] {(SessionManager.GetDisplayName(session)).EscapeMarkup()}");
         AnsiConsole.WriteLine();
 
         var noteText = AnsiConsole.Ask<string>("[blue]Note:[/]");
@@ -329,7 +329,7 @@ public class InteractiveTableEditor
             }
         }
 
-        var panelTitle = (session.Promoted?.Name ?? session.Summary).EscapeMarkup();
+        var panelTitle = (SessionManager.GetDisplayName(session)).EscapeMarkup();
         var panel = new Panel(grid)
         {
             Header = new PanelHeader($"[yellow]{panelTitle}[/]"),
@@ -357,7 +357,7 @@ public class InteractiveTableEditor
         var session = state.Sessions[state.SelectedRow];
 
         Console.Clear();
-        AnsiConsole.MarkupLine($"[green]Resuming session:[/] {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"[green]Resuming session:[/] {(SessionManager.GetDisplayName(session)).EscapeMarkup()}");
         AnsiConsole.MarkupLine($"[dim]Project: {session.ProjectPath.EscapeMarkup()}[/]");
         AnsiConsole.WriteLine();
 
@@ -366,7 +366,7 @@ public class InteractiveTableEditor
         if (isITerm2)
         {
             // Use AppleScript to open a new iTerm2 tab
-            var tabName = (session.Promoted?.Name ?? session.Summary).Replace("'", "\\'");
+            var tabName = (SessionManager.GetDisplayName(session)).Replace("'", "\\'");
             var appleScript = $@"
 tell application ""iTerm2""
     tell current window
@@ -411,7 +411,7 @@ end tell";
         var session = state.Sessions[state.SelectedRow];
 
         Console.Clear();
-        var confirm = AnsiConsole.Confirm($"Remove [yellow]{(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}[/] from promoted sessions?");
+        var confirm = AnsiConsole.Confirm($"Remove [yellow]{(SessionManager.GetDisplayName(session)).EscapeMarkup()}[/] from promoted sessions?");
 
         if (confirm)
         {
@@ -444,7 +444,7 @@ end tell";
             {
                 Header = "Name",
                 IsEditable = true,
-                GetDisplayValue = s => TruncateString(s.Promoted?.Name ?? s.Summary, 40),
+                GetDisplayValue = s => TruncateString(SessionManager.GetDisplayName(s), 40),
                 EditAndSave = s => EditNameField(s)
             },
             new ColumnDefinition
@@ -476,7 +476,7 @@ end tell";
         Console.Clear();
         var newName = AnsiConsole.Prompt(
             new TextPrompt<string>("[blue]Name:[/]")
-                .DefaultValue(session.Promoted?.Name ?? session.Summary)
+                .DefaultValue(SessionManager.GetDisplayName(session))
                 .AllowEmpty());
 
         if (string.IsNullOrWhiteSpace(newName))

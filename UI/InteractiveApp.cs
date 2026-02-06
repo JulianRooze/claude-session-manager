@@ -110,7 +110,7 @@ public class InteractiveApp
         List<SessionManager.SessionSearchResult> searchResults = new();
 
         AnsiConsole.Status()
-            .Start("Searching all conversations...", ctx =>
+            .Start("Searching...", ctx =>
             {
                 searchResults = _manager.SearchSessions(query);
             });
@@ -135,7 +135,7 @@ public class InteractiveApp
         var choices = searchResults.Select(result =>
         {
             var session = result.Session;
-            var name = session.Promoted?.Name ?? session.Summary;
+            var name = SessionManager.GetDisplayName(session);
             if (name.Length > 60) name = name.Substring(0, 57) + "...";
             name = name.EscapeMarkup();
 
@@ -185,7 +185,7 @@ public class InteractiveApp
     {
         var choices = _currentSessions.Select(s =>
         {
-            var name = s.Promoted?.Name ?? s.Summary;
+            var name = SessionManager.GetDisplayName(s);
             if (name.Length > 60) name = name.Substring(0, 57) + "...";
             name = name.EscapeMarkup(); // Escape markup characters
 
@@ -258,7 +258,7 @@ public class InteractiveApp
                 }
             }
 
-            var panelTitle = (session.Promoted?.Name ?? session.Summary).EscapeMarkup();
+            var panelTitle = (SessionManager.GetDisplayName(session)).EscapeMarkup();
             var panel = new Panel(grid)
             {
                 Header = new PanelHeader($"[yellow]{panelTitle}[/]"),
@@ -344,7 +344,7 @@ public class InteractiveApp
         AnsiConsole.MarkupLine($"[green]Found {_currentSessions.Count} active session(s):[/]");
         foreach (var session in _currentSessions)
         {
-            AnsiConsole.MarkupLine($"  • {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}");
+            AnsiConsole.MarkupLine($"  • {(SessionManager.GetDisplayName(session)).EscapeMarkup()}");
         }
         AnsiConsole.WriteLine();
 
@@ -358,9 +358,9 @@ public class InteractiveApp
             // Open all sessions in new iTerm2 tabs
             foreach (var session in _currentSessions)
             {
-                AnsiConsole.MarkupLine($"[dim]Opening: {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}[/]");
+                AnsiConsole.MarkupLine($"[dim]Opening: {(SessionManager.GetDisplayName(session)).EscapeMarkup()}[/]");
 
-                var tabName = (session.Promoted?.Name ?? session.Summary).Replace("'", "\\'");
+                var tabName = (SessionManager.GetDisplayName(session)).Replace("'", "\\'");
                 var appleScript = $@"
 tell application ""iTerm2""
     tell current window
@@ -409,7 +409,7 @@ end tell";
 
     private void ResumeSession(ClaudeSession session)
     {
-        AnsiConsole.MarkupLine($"[green]Resuming session:[/] {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}");
+        AnsiConsole.MarkupLine($"[green]Resuming session:[/] {(SessionManager.GetDisplayName(session)).EscapeMarkup()}");
         AnsiConsole.MarkupLine($"[dim]Project: {session.ProjectPath.EscapeMarkup()}[/]");
         AnsiConsole.WriteLine();
 
@@ -418,7 +418,7 @@ end tell";
         if (isITerm2)
         {
             // Use AppleScript to open a new iTerm2 tab
-            var tabName = (session.Promoted?.Name ?? session.Summary).Replace("'", "\\'");
+            var tabName = (SessionManager.GetDisplayName(session)).Replace("'", "\\'");
             var appleScript = $@"
 tell application ""iTerm2""
     tell current window
@@ -523,7 +523,7 @@ end tell";
 
     private void ArchiveSession(ClaudeSession session)
     {
-        var confirm = AnsiConsole.Confirm($"Archive [yellow]{session.Promoted?.Name ?? session.Summary}[/]?");
+        var confirm = AnsiConsole.Confirm($"Archive [yellow]{SessionManager.GetDisplayName(session)}[/]?");
         if (confirm)
         {
             _manager.ArchiveSession(session.SessionId);
@@ -628,7 +628,7 @@ end tell";
         AnsiConsole.MarkupLine($"[green]Found {_currentSessions.Count} active session(s):[/]");
         foreach (var session in _currentSessions)
         {
-            AnsiConsole.MarkupLine($"  • {(session.Promoted?.Name ?? session.Summary).EscapeMarkup()}");
+            AnsiConsole.MarkupLine($"  • {(SessionManager.GetDisplayName(session)).EscapeMarkup()}");
         }
         AnsiConsole.WriteLine();
 

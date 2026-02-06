@@ -56,7 +56,7 @@ public class ListCommand : Command<ListCommand.Settings>
 
         foreach (var session in sessions)
         {
-            var displayName = session.Promoted?.Name ?? session.Summary;
+            var displayName = SessionManager.GetDisplayName(session);
             if (displayName.Length > 50)
             {
                 displayName = displayName.Substring(0, 47) + "...";

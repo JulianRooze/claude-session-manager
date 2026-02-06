@@ -102,32 +102,57 @@ public class SessionManager
 
         foreach (var projectDir in Directory.GetDirectories(projectsDir))
         {
-            var indexFile = Path.Combine(projectDir, "sessions-index.json");
-            if (!File.Exists(indexFile))
-            {
-                continue;
-            }
-
             // Decode the directory name to get the actual project path
             var dirName = Path.GetFileName(projectDir);
             var decodedPath = DecodeProjectDirName(dirName);
 
+            var indexedSessionIds = new HashSet<string>();
+
+            // Load sessions from the index file
+            var indexFile = Path.Combine(projectDir, "sessions-index.json");
+            if (File.Exists(indexFile))
+            {
+                try
+                {
+                    var json = File.ReadAllText(indexFile);
+                    var index = JsonSerializer.Deserialize(json, JsonContext.Default.SessionsIndex);
+                    if (index?.Entries != null)
+                    {
+                        foreach (var session in index.Entries)
+                        {
+                            indexedSessionIds.Add(session.SessionId);
+
+                            if (!string.IsNullOrEmpty(decodedPath))
+                            {
+                                session.ProjectPath = decodedPath;
+                            }
+
+                            if (_promotedStore.Sessions.TryGetValue(session.SessionId, out var promoted))
+                            {
+                                session.Promoted = promoted;
+                            }
+                            allSessions.Add(session);
+                        }
+                    }
+                }
+                catch
+                {
+                    // Skip invalid index files
+                }
+            }
+
+            // Discover JSONL files not in the index (recent/unindexed sessions)
             try
             {
-                var json = File.ReadAllText(indexFile);
-                var index = JsonSerializer.Deserialize(json, JsonContext.Default.SessionsIndex);
-                if (index?.Entries != null)
+                foreach (var jsonlFile in Directory.GetFiles(projectDir, "*.jsonl"))
                 {
-                    foreach (var session in index.Entries)
-                    {
-                        // Override ProjectPath with the decoded directory path
-                        // The JSON projectPath can be wrong (reflects last working dir, not start dir)
-                        if (!string.IsNullOrEmpty(decodedPath))
-                        {
-                            session.ProjectPath = decodedPath;
-                        }
+                    var fileName = Path.GetFileNameWithoutExtension(jsonlFile);
+                    if (indexedSessionIds.Contains(fileName))
+                        continue;
 
-                        // Attach promoted metadata if exists
+                    var session = LoadSessionFromJsonl(jsonlFile, fileName, decodedPath);
+                    if (session != null)
+                    {
                         if (_promotedStore.Sessions.TryGetValue(session.SessionId, out var promoted))
                         {
                             session.Promoted = promoted;
@@ -138,11 +163,141 @@ public class SessionManager
             }
             catch
             {
-                // Skip invalid index files
+                // Skip if we can't read the directory
             }
         }
 
         return allSessions;
+    }
+
+    /// <summary>
+    /// Returns a clean display name for a session, replacing error messages with a fallback.
+    /// </summary>
+    public static string GetDisplayName(ClaudeSession session)
+    {
+        if (session.Promoted?.Name != null)
+            return session.Promoted.Name;
+
+        var text = session.Summary;
+        if (!string.IsNullOrEmpty(text) && !LooksLikeError(text))
+            return text;
+
+        text = session.FirstPrompt;
+        if (!string.IsNullOrEmpty(text) && !LooksLikeError(text))
+            return text;
+
+        return "(no summary)";
+    }
+
+    internal static bool LooksLikeError(string text)
+    {
+        return text.StartsWith("API Error:", StringComparison.OrdinalIgnoreCase)
+            || text.StartsWith("{\"type\":\"error\"", StringComparison.Ordinal)
+            || text.StartsWith("Error:", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Extracts basic session metadata from a JSONL conversation file using System.Text.Json.
+    /// Reads the first 50 lines to get first prompt, timestamps, git branch, etc.
+    /// Then counts remaining messages with a fast string check.
+    /// </summary>
+    private ClaudeSession? LoadSessionFromJsonl(string jsonlPath, string sessionId, string decodedPath)
+    {
+        try
+        {
+            var fileInfo = new FileInfo(jsonlPath);
+            using var reader = new StreamReader(jsonlPath);
+
+            string? firstPrompt = null;
+            string? gitBranch = null;
+            string? cwd = null;
+            DateTime? created = null;
+            DateTime? lastTimestamp = null;
+            int messageCount = 0;
+            bool isSidechain = false;
+
+            string? line;
+            int lineCount = 0;
+            while ((line = reader.ReadLine()) != null && lineCount < 50)
+            {
+                lineCount++;
+
+                try
+                {
+                    using var doc = JsonDocument.Parse(line);
+                    var root = doc.RootElement;
+
+                    if (!root.TryGetProperty("type", out var typeEl))
+                        continue;
+
+                    var type = typeEl.GetString();
+                    if (type != "user" && type != "assistant")
+                        continue;
+
+                    messageCount++;
+
+                    if (gitBranch == null && root.TryGetProperty("gitBranch", out var branchEl))
+                        gitBranch = branchEl.GetString();
+
+                    if (cwd == null && root.TryGetProperty("cwd", out var cwdEl))
+                        cwd = cwdEl.GetString();
+
+                    if (!isSidechain && root.TryGetProperty("isSidechain", out var sidechainEl)
+                        && sidechainEl.ValueKind == JsonValueKind.True)
+                        isSidechain = true;
+
+                    if (root.TryGetProperty("timestamp", out var tsEl))
+                    {
+                        var tsStr = tsEl.GetString();
+                        if (tsStr != null && DateTime.TryParse(tsStr, out var ts))
+                        {
+                            if (created == null) created = ts;
+                            lastTimestamp = ts;
+                        }
+                    }
+
+                    if (firstPrompt == null && type == "user"
+                        && root.TryGetProperty("message", out var msgEl)
+                        && msgEl.TryGetProperty("content", out var contentEl)
+                        && contentEl.ValueKind == JsonValueKind.String)
+                    {
+                        var text = contentEl.GetString();
+                        if (!string.IsNullOrEmpty(text))
+                            firstPrompt = text.Length > 200 ? text.Substring(0, 197) + "..." : text;
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+            }
+
+            // Count remaining messages with fast string check
+            while ((line = reader.ReadLine()) != null)
+            {
+                if (line.Contains("\"type\":\"user\"") || line.Contains("\"type\":\"assistant\""))
+                    messageCount++;
+            }
+
+            return new ClaudeSession
+            {
+                SessionId = sessionId,
+                FullPath = jsonlPath,
+                FirstPrompt = firstPrompt ?? "",
+                Summary = firstPrompt ?? "",
+                MessageCount = messageCount,
+                Created = created ?? fileInfo.CreationTimeUtc,
+                Modified = lastTimestamp ?? fileInfo.LastWriteTimeUtc,
+                GitBranch = gitBranch ?? "",
+                ProjectPath = !string.IsNullOrEmpty(decodedPath) ? decodedPath : (cwd ?? ""),
+                IsSidechain = isSidechain,
+                FileMtime = new DateTimeOffset(fileInfo.LastWriteTimeUtc).ToUnixTimeMilliseconds()
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public void PromoteSession(string sessionId, string? name = null, string? description = null,
@@ -221,7 +376,6 @@ public class SessionManager
             var matchedWords = new HashSet<string>();
             var matchPreviews = new List<string>();
 
-            // Check metadata first for each word
             foreach (var word in queryWords)
             {
                 if ((session.Promoted?.Name?.ToLowerInvariant().Contains(word) ?? false) ||
@@ -232,7 +386,6 @@ public class SessionManager
                 }
             }
 
-            // Then check conversation content for remaining words
             var unmatchedWords = queryWords.Except(matchedWords).ToList();
             if (unmatchedWords.Any())
             {
@@ -240,7 +393,6 @@ public class SessionManager
                 foreach (var match in conversationMatches)
                 {
                     matchedWords.Add(match.Word);
-                    // Only add preview if it's readable (not the fallback)
                     if (matchPreviews.Count < 2 && match.Context != "[match in conversation]")
                     {
                         matchPreviews.Add(match.Context);
@@ -250,7 +402,6 @@ public class SessionManager
 
             if (matchedWords.Any())
             {
-                // Use summary as preview if we don't have any good conversation excerpts
                 var preview = matchPreviews.Any() ? string.Join(" ... ", matchPreviews) : session.Summary;
                 if (preview.Length > 150) preview = preview.Substring(0, 147) + "...";
 
@@ -264,9 +415,9 @@ public class SessionManager
             }
         }
 
-        // Sort by match count (descending), then by modified date (descending)
         return results.OrderByDescending(r => r.MatchCount)
                      .ThenByDescending(r => r.Session.Modified)
+                     .Take(10)
                      .ToList();
     }
 
@@ -310,88 +461,64 @@ public class SessionManager
     }
 
     /// <summary>
-    /// Extracts the human-readable message content from a JSONL line.
-    /// Parses the JSON to get message.content, ignoring metadata and tool calls.
+    /// Extracts the human-readable message content from a JSONL line using System.Text.Json.
+    /// Only returns text from "text" type content blocks, skipping tool_use, thinking, etc.
     /// </summary>
     private string? ExtractMessageContent(string jsonLine)
     {
         try
         {
-            // Quick pre-check: only process user and assistant messages
-            if (!jsonLine.Contains("\"type\":\"user\"") && !jsonLine.Contains("\"type\":\"assistant\""))
+            using var doc = JsonDocument.Parse(jsonLine);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("type", out var typeEl))
                 return null;
 
-            // Find the "content" field value - look for "content":" pattern
-            var contentKey = "\"content\":\"";
-            var idx = jsonLine.IndexOf(contentKey);
-            if (idx < 0)
-            {
-                // Try content as array (tool_use messages have content as array)
-                contentKey = "\"content\":[";
-                idx = jsonLine.IndexOf(contentKey);
-                if (idx < 0) return null;
+            var type = typeEl.GetString();
+            if (type != "user" && type != "assistant")
+                return null;
 
-                // For array content, extract all "text" fields
-                var texts = new List<string>();
-                var textKey = "\"text\":\"";
-                var searchStart = idx;
-                while (true)
-                {
-                    var textIdx = jsonLine.IndexOf(textKey, searchStart);
-                    if (textIdx < 0) break;
-                    var textStart = textIdx + textKey.Length;
-                    var textEnd = FindEndOfJsonString(jsonLine, textStart);
-                    if (textEnd > textStart)
-                    {
-                        texts.Add(UnescapeJsonString(jsonLine.Substring(textStart, textEnd - textStart)));
-                    }
-                    searchStart = textEnd + 1;
-                }
-                return texts.Any() ? string.Join(" ", texts) : null;
+            if (!root.TryGetProperty("message", out var messageEl))
+                return null;
+
+            if (!messageEl.TryGetProperty("content", out var contentEl))
+                return null;
+
+            // Content can be a plain string (common for user messages)
+            if (contentEl.ValueKind == JsonValueKind.String)
+            {
+                var text = contentEl.GetString();
+                if (text != null && LooksLikeError(text))
+                    return null;
+                return text;
             }
 
-            // Extract string value after "content":"
-            var valStart = idx + contentKey.Length;
-            var valEnd = FindEndOfJsonString(jsonLine, valStart);
-            if (valEnd <= valStart) return null;
+            // Content can be an array of typed blocks (assistant messages)
+            if (contentEl.ValueKind == JsonValueKind.Array)
+            {
+                var texts = new List<string>();
+                foreach (var block in contentEl.EnumerateArray())
+                {
+                    if (block.ValueKind != JsonValueKind.Object)
+                        continue;
+                    if (!block.TryGetProperty("type", out var blockType))
+                        continue;
+                    if (blockType.GetString() == "text" && block.TryGetProperty("text", out var textEl))
+                    {
+                        var text = textEl.GetString();
+                        if (!string.IsNullOrEmpty(text) && !LooksLikeError(text))
+                            texts.Add(text);
+                    }
+                }
+                return texts.Count > 0 ? string.Join(" ", texts) : null;
+            }
 
-            var raw = jsonLine.Substring(valStart, valEnd - valStart);
-            return UnescapeJsonString(raw);
+            return null;
         }
         catch
         {
             return null;
         }
-    }
-
-    /// <summary>
-    /// Finds the end of a JSON string value (the closing unescaped quote).
-    /// </summary>
-    private int FindEndOfJsonString(string s, int start)
-    {
-        for (int i = start; i < s.Length; i++)
-        {
-            if (s[i] == '\\')
-            {
-                i++; // Skip escaped character
-                continue;
-            }
-            if (s[i] == '"')
-            {
-                return i;
-            }
-        }
-        return s.Length;
-    }
-
-    /// <summary>
-    /// Unescapes common JSON string escape sequences.
-    /// </summary>
-    private string UnescapeJsonString(string s)
-    {
-        return s.Replace("\\n", "\n").Replace("\\t", "\t")
-               .Replace("\\\"", "\"").Replace("\\\\", "\\")
-               .Replace("\\r", "\r");
     }
 
     private string ExtractContext(string content, string word)
@@ -445,3 +572,4 @@ public class SessionManager
         return allSessions.Where(s => s.Promoted != null).ToList();
     }
 }
+
