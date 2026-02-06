@@ -281,13 +281,16 @@ public class SessionManager
             string? line;
             while ((line = reader.ReadLine()) != null)
             {
-                var lineLower = line.ToLowerInvariant();
+                // Extract only the actual message content from the JSONL line
+                var content = ExtractMessageContent(line);
+                if (string.IsNullOrEmpty(content)) continue;
+
+                var contentLower = content.ToLowerInvariant();
                 foreach (var word in words)
                 {
-                    if (lineLower.Contains(word) && !matches.Any(m => m.Word == word))
+                    if (contentLower.Contains(word) && !matches.Any(m => m.Word == word))
                     {
-                        // Extract a snippet of text around the match
-                        var context = ExtractContext(line, word);
+                        var context = ExtractContext(content, word);
                         matches.Add(new ConversationMatch { Word = word, Context = context });
 
                         if (matches.Count >= words.Count)
@@ -306,73 +309,120 @@ public class SessionManager
         return matches;
     }
 
-    private string ExtractContext(string line, string word)
+    /// <summary>
+    /// Extracts the human-readable message content from a JSONL line.
+    /// Parses the JSON to get message.content, ignoring metadata and tool calls.
+    /// </summary>
+    private string? ExtractMessageContent(string jsonLine)
     {
         try
         {
-            // Look for the word in the line
-            var wordIdx = line.IndexOf(word, StringComparison.OrdinalIgnoreCase);
-            if (wordIdx < 0) return "[match in conversation]";
+            // Quick pre-check: only process user and assistant messages
+            if (!jsonLine.Contains("\"type\":\"user\"") && !jsonLine.Contains("\"type\":\"assistant\""))
+                return null;
+
+            // Find the "content" field value - look for "content":" pattern
+            var contentKey = "\"content\":\"";
+            var idx = jsonLine.IndexOf(contentKey);
+            if (idx < 0)
+            {
+                // Try content as array (tool_use messages have content as array)
+                contentKey = "\"content\":[";
+                idx = jsonLine.IndexOf(contentKey);
+                if (idx < 0) return null;
+
+                // For array content, extract all "text" fields
+                var texts = new List<string>();
+                var textKey = "\"text\":\"";
+                var searchStart = idx;
+                while (true)
+                {
+                    var textIdx = jsonLine.IndexOf(textKey, searchStart);
+                    if (textIdx < 0) break;
+                    var textStart = textIdx + textKey.Length;
+                    var textEnd = FindEndOfJsonString(jsonLine, textStart);
+                    if (textEnd > textStart)
+                    {
+                        texts.Add(UnescapeJsonString(jsonLine.Substring(textStart, textEnd - textStart)));
+                    }
+                    searchStart = textEnd + 1;
+                }
+                return texts.Any() ? string.Join(" ", texts) : null;
+            }
+
+            // Extract string value after "content":"
+            var valStart = idx + contentKey.Length;
+            var valEnd = FindEndOfJsonString(jsonLine, valStart);
+            if (valEnd <= valStart) return null;
+
+            var raw = jsonLine.Substring(valStart, valEnd - valStart);
+            return UnescapeJsonString(raw);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Finds the end of a JSON string value (the closing unescaped quote).
+    /// </summary>
+    private int FindEndOfJsonString(string s, int start)
+    {
+        for (int i = start; i < s.Length; i++)
+        {
+            if (s[i] == '\\')
+            {
+                i++; // Skip escaped character
+                continue;
+            }
+            if (s[i] == '"')
+            {
+                return i;
+            }
+        }
+        return s.Length;
+    }
+
+    /// <summary>
+    /// Unescapes common JSON string escape sequences.
+    /// </summary>
+    private string UnescapeJsonString(string s)
+    {
+        return s.Replace("\\n", "\n").Replace("\\t", "\t")
+               .Replace("\\\"", "\"").Replace("\\\\", "\\")
+               .Replace("\\r", "\r");
+    }
+
+    private string ExtractContext(string content, string word)
+    {
+        try
+        {
+            var wordIdx = content.IndexOf(word, StringComparison.OrdinalIgnoreCase);
+            if (wordIdx < 0) return content.Length > 100 ? content.Substring(0, 97) + "..." : content;
 
             // Extract a window around the match
             var start = Math.Max(0, wordIdx - 60);
-            var end = Math.Min(line.Length, wordIdx + 100);
-            var snippet = line.Substring(start, end - start);
+            var end = Math.Min(content.Length, wordIdx + word.Length + 60);
 
-            // Clean up
-            snippet = snippet.Replace("\\n", " ").Replace("\\t", " ")
-                           .Replace("\\\"", "\"").Replace("\\\\", "\\")
-                           .Replace("\\r", " ");
+            // Try to start/end at word boundaries
+            while (start > 0 && content[start] != ' ' && content[start] != '\n') start--;
+            while (end < content.Length && content[end] != ' ' && content[end] != '\n') end++;
 
-            // Remove JSON noise
-            snippet = System.Text.RegularExpressions.Regex.Replace(snippet, @"[{}\[\]"",:]", " ");
+            var snippet = content.Substring(start, end - start).Trim();
+
+            // Clean up newlines
+            snippet = snippet.Replace("\n", " ").Replace("\r", " ");
             snippet = System.Text.RegularExpressions.Regex.Replace(snippet, @"\s+", " ").Trim();
 
-            // Check if this looks like readable text
-            if (!IsReadableText(snippet))
-            {
-                return "[match in conversation]";
-            }
-
-            // Truncate to reasonable length
-            if (snippet.Length > 100) snippet = snippet.Substring(0, 97) + "...";
+            if (snippet.Length > 120) snippet = snippet.Substring(0, 117) + "...";
 
             return snippet;
         }
         catch
         {
-            return "[match in conversation]";
+            return content.Length > 100 ? content.Substring(0, 97) + "..." : content;
         }
-    }
-
-    private bool IsReadableText(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text) || text.Length < 15) return false;
-
-        // Count alphanumeric vs total chars
-        var alphaNum = text.Count(char.IsLetterOrDigit);
-        var total = text.Length;
-
-        if (total == 0) return false;
-        var ratio = (double)alphaNum / total;
-
-        // Should be at least 60% alphanumeric (filters out base64, UUIDs, etc.)
-        if (ratio < 0.6) return false;
-
-        // Must contain spaces (actual sentences)
-        if (!text.Contains(' ')) return false;
-
-        // Check for common noise patterns
-        if (text.Contains("signature") && text.Length < 30) return false;
-        if (text.Contains("version") && text.Contains("gitBranch")) return false;
-        if (System.Text.RegularExpressions.Regex.IsMatch(text, @"[A-Za-z0-9+/]{40,}")) return false; // Base64
-        if (System.Text.RegularExpressions.Regex.IsMatch(text, @"[a-f0-9-]{30,}")) return false; // UUIDs
-
-        // Count actual words (sequences of letters)
-        var words = System.Text.RegularExpressions.Regex.Matches(text, @"\b[a-zA-Z]{3,}\b").Count;
-        if (words < 3) return false; // At least 3 real words
-
-        return true;
     }
 
     private class ConversationMatch
