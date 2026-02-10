@@ -38,13 +38,14 @@ public class ResumeCommand : Command<ResumeCommand.Settings>
         AnsiConsole.WriteLine();
 
         // Build the claude command
+        var titleEnv = !string.IsNullOrEmpty(session.Promoted?.Name) ? "export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && " : "";
         var claudeCommand = $"claude --resume {session.SessionId}";
 
         // Start the process in the project directory
         var processInfo = new ProcessStartInfo
         {
             FileName = "/bin/bash",
-            Arguments = $"-c \"cd '{session.ProjectPath}' && {claudeCommand}\"",
+            Arguments = $"-c \"{titleEnv}cd '{session.ProjectPath}' && {claudeCommand}\"",
             UseShellExecute = false
         };
 
