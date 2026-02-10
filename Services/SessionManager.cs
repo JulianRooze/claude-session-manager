@@ -193,12 +193,15 @@ public class SessionManager
     /// Returns a shell command prefix that sets the terminal title and prevents Claude from overriding it.
     /// Returns empty string for sessions without a promoted name.
     /// </summary>
-    public static string GetTitleCommandPrefix(ClaudeSession session)
+    public static string GetTitleCommandPrefix(ClaudeSession session, bool escapeForAppleScript = false)
     {
         if (string.IsNullOrEmpty(session.Promoted?.Name))
             return "";
 
         var name = session.Promoted.Name.Replace("'", "");
+        // AppleScript interprets \\ as \, so we need an extra escape layer
+        if (escapeForAppleScript)
+            return $"printf '\\\\x1b]0;{name}\\\\x07' && export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && ";
         return $"printf '\\x1b]0;{name}\\x07' && export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && ";
     }
 

@@ -361,7 +361,7 @@ public class InteractiveApp
                 AnsiConsole.MarkupLine($"[dim]Opening: {(SessionManager.GetDisplayName(session)).EscapeMarkup()}[/]");
 
                 var tabName = (SessionManager.GetDisplayName(session)).Replace("'", "\\'");
-                var titleCmd = SessionManager.GetTitleCommandPrefix(session);
+                var titleCmd = SessionManager.GetTitleCommandPrefix(session, escapeForAppleScript: true);
                 var appleScript = $@"
 tell application ""iTerm2""
     tell current window
@@ -420,7 +420,7 @@ end tell";
         {
             // Use AppleScript to open a new iTerm2 tab
             var tabName = (SessionManager.GetDisplayName(session)).Replace("'", "\\'");
-            var titleCmd = SessionManager.GetTitleCommandPrefix(session);
+            var titleCmd = SessionManager.GetTitleCommandPrefix(session, escapeForAppleScript: true);
             var appleScript = $@"
 tell application ""iTerm2""
     tell current window
