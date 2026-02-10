@@ -361,14 +361,14 @@ public class InteractiveApp
                 AnsiConsole.MarkupLine($"[dim]Opening: {(SessionManager.GetDisplayName(session)).EscapeMarkup()}[/]");
 
                 var tabName = (SessionManager.GetDisplayName(session)).Replace("'", "\\'");
-                var titleEnv = !string.IsNullOrEmpty(session.Promoted?.Name) ? "export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && " : "";
+                var titleCmd = SessionManager.GetTitleCommandPrefix(session);
                 var appleScript = $@"
 tell application ""iTerm2""
     tell current window
         create tab with default profile
         tell current session
             set name to ""{tabName}""
-            write text ""{titleEnv}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions""
+            write text ""{titleCmd}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions""
         end tell
     end tell
 end tell";
@@ -420,14 +420,14 @@ end tell";
         {
             // Use AppleScript to open a new iTerm2 tab
             var tabName = (SessionManager.GetDisplayName(session)).Replace("'", "\\'");
-            var titleEnv = !string.IsNullOrEmpty(session.Promoted?.Name) ? "export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && " : "";
+            var titleCmd = SessionManager.GetTitleCommandPrefix(session);
             var appleScript = $@"
 tell application ""iTerm2""
     tell current window
         create tab with default profile
         tell current session
             set name to ""{tabName}""
-            write text ""{titleEnv}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions""
+            write text ""{titleCmd}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions""
         end tell
     end tell
 end tell";
@@ -461,11 +461,11 @@ end tell";
         else
         {
             // Fall back to running in current terminal
-            var titleEnvBash = !string.IsNullOrEmpty(session.Promoted?.Name) ? "export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && " : "";
+            var titleCmdBash = SessionManager.GetTitleCommandPrefix(session);
             var processInfo = new ProcessStartInfo
             {
                 FileName = "/bin/bash",
-                Arguments = $"-c \"{titleEnvBash}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions\"",
+                Arguments = $"-c \"{titleCmdBash}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions\"",
                 UseShellExecute = false
             };
 

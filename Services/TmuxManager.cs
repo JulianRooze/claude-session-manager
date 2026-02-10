@@ -43,8 +43,8 @@ public class TmuxManager
 
         // Create the tmux session with the first Claude session
         var firstSession = sessions[0];
-        var firstTitleEnv = !string.IsNullOrEmpty(firstSession.Promoted?.Name) ? "export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && " : "";
-        var firstCommand = $"{firstTitleEnv}cd '{firstSession.ProjectPath}' && claude --resume {firstSession.SessionId} --dangerously-skip-permissions";
+        var firstTitleCmd = SessionManager.GetTitleCommandPrefix(firstSession);
+        var firstCommand = $"{firstTitleCmd}cd '{firstSession.ProjectPath}' && claude --resume {firstSession.SessionId} --dangerously-skip-permissions";
         var firstName = SessionManager.GetDisplayName(firstSession).Replace("'", "\\'").Replace("\"", "\\\"");
 
         RunCommand($"tmux new-session -d -s {tmuxSessionName} -n \"{firstName}\" '{firstCommand}'");
@@ -53,8 +53,8 @@ public class TmuxManager
         for (int i = 1; i < sessions.Count; i++)
         {
             var session = sessions[i];
-            var titleEnv = !string.IsNullOrEmpty(session.Promoted?.Name) ? "export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && " : "";
-            var command = $"{titleEnv}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions";
+            var titleCmd = SessionManager.GetTitleCommandPrefix(session);
+            var command = $"{titleCmd}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions";
             var windowName = SessionManager.GetDisplayName(session).Replace("'", "\\'").Replace("\"", "\\\"");
 
             RunCommand($"tmux new-window -t {tmuxSessionName}: -n \"{windowName}\" '{command}'");
@@ -88,8 +88,8 @@ public class TmuxManager
 
     public void AddWindowToSession(string sessionName, ClaudeSession session)
     {
-        var titleEnv = !string.IsNullOrEmpty(session.Promoted?.Name) ? "export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && " : "";
-        var command = $"{titleEnv}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions";
+        var titleCmd = SessionManager.GetTitleCommandPrefix(session);
+        var command = $"{titleCmd}cd '{session.ProjectPath}' && claude --resume {session.SessionId} --dangerously-skip-permissions";
         var windowName = SessionManager.GetDisplayName(session).Replace("'", "\\'").Replace("\"", "\\\"");
 
         RunCommand($"tmux new-window -t {sessionName}: -n \"{windowName}\" '{command}'");

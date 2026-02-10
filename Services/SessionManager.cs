@@ -189,6 +189,19 @@ public class SessionManager
         return "(no summary)";
     }
 
+    /// <summary>
+    /// Returns a shell command prefix that sets the terminal title and prevents Claude from overriding it.
+    /// Returns empty string for sessions without a promoted name.
+    /// </summary>
+    public static string GetTitleCommandPrefix(ClaudeSession session)
+    {
+        if (string.IsNullOrEmpty(session.Promoted?.Name))
+            return "";
+
+        var name = session.Promoted.Name.Replace("'", "");
+        return $"printf '\\e]0;{name}\\a' && export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && ";
+    }
+
     internal static bool LooksLikeError(string text)
     {
         return text.StartsWith("API Error:", StringComparison.OrdinalIgnoreCase)
