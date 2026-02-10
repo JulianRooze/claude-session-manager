@@ -199,7 +199,7 @@ public class SessionManager
             return "";
 
         var name = session.Promoted.Name.Replace("'", "");
-        return $"printf '\\e]0;{name}\\a' && export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && ";
+        return $"printf '\\x1b]0;{name}\\x07' && export CLAUDE_CODE_DISABLE_TERMINAL_TITLE=1 && ";
     }
 
     internal static bool LooksLikeError(string text)
